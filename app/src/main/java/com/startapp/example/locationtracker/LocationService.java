@@ -90,8 +90,6 @@ public class LocationService extends Service implements GoogleApiClient.Connecti
     }
 
     private void onServiceStarted() {
-        // Notify user
-        Toast.makeText(getApplicationContext(), "Service started!", Toast.LENGTH_SHORT).show();
         // Update Shared Prefs
         getSharedPrefsEditor().putBoolean(Constants.SP_KEY_SERVICE_RUNNING, true).apply();
         // Send broadcast
@@ -99,8 +97,6 @@ public class LocationService extends Service implements GoogleApiClient.Connecti
     }
 
     private void onServiceStopped() {
-        // Notify user
-        Toast.makeText(getApplicationContext(), "Service stopped!", Toast.LENGTH_SHORT).show();
         // Update shared prefs
         getSharedPrefsEditor().putBoolean(Constants.SP_KEY_SERVICE_RUNNING, false).apply();
         // Send broadcast
@@ -178,7 +174,7 @@ public class LocationService extends Service implements GoogleApiClient.Connecti
 
         // Sets the fastest rate for active location updates. This interval is exact, and your
         // application will never receive updates faster than this value.
-        locationRequest.setFastestInterval(TimeUnit.SECONDS.toMillis(30));
+        locationRequest.setFastestInterval(TimeUnit.SECONDS.toMillis(configuration.getUpdatesIntervalSeconds()));
 
         locationRequest.setPriority(configuration.getLocationStrategy().getFusedPriority());
     }

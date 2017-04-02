@@ -14,10 +14,13 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.FileProvider;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -38,6 +41,7 @@ import java.util.ListIterator;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
+    public static final int REQUEST_CODE_PERMISSIONS = 1;
 
     private LocationStrategy selectedStrategy;
 
@@ -50,12 +54,14 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView tvResult;
 
+    private boolean requestingPermissions = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        tvCurrentStrategy = (TextView)findViewById(R.id.tvCurrStrategy);
+        tvCurrentStrategy = (TextView) findViewById(R.id.tvCurrStrategy);
         tvCurrentStrategy.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -75,10 +81,46 @@ public class MainActivity extends AppCompatActivity {
         etDistance.setText(String.valueOf(configuration.getDistance()));
         etInterval.setText(String.valueOf(configuration.getUpdatesIntervalSeconds()));
 
-        onNewStrategy(configuration.getLocationStrategy());
+        etDistance.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                Log.d(TAG, "Distance changed, restarting service");
+                restartLocationService();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+
+            }
+        });
+
+        etInterval.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                Log.d(TAG, "Distance changed, restarting service");
+                restartLocationService();
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                Log.d(TAG, "Interval changed, restarting service");
+                restartLocationService();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+
+            }
+        });
 
         requestPermissions();
-        checkIfLocationEnabled();
+
+        onNewStrategy(configuration.getLocationStrategy());
     }
 
     @Override
@@ -88,12 +130,32 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).registerReceiver(LocationReceiver, new IntentFilter(Constants.BR_ACTION_LOCATION_UPDATE));
         LocalBroadcastManager.getInstance(this).registerReceiver(LocationReceiver, new IntentFilter(Constants.BR_ACTION_SERVICE_STATUS));
         LocalBroadcastManager.getInstance(this).registerReceiver(LocationReceiver, new IntentFilter(Constants.BR_ACTION_GOOGLE_STATUS));
+        if (!isLocationEnabled()) {
+            tryEnableLocation();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(LocationReceiver);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            Log.d(TAG, "onRequestPermissionsResult");
+            for (int grantResult : grantResults) {
+                if (grantResult != PackageManager.PERMISSION_GRANTED) {
+                    Log.e(TAG, "Not all permissions were granted!");
+                    Toast.makeText(this, "Not all permissions were granted!", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
+            Log.d(TAG, "Success granting permissions!");
+            requestingPermissions = false;
+            restartLocationService();
+        }
     }
 
     private void onChangeStrategyClick() {
@@ -115,7 +177,7 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("OK", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int whichButton) {
                         dialog.dismiss();
-                        int selectedPosition = ((AlertDialog)dialog).getListView().getCheckedItemPosition();
+                        int selectedPosition = ((AlertDialog) dialog).getListView().getCheckedItemPosition();
                         onNewStrategy(locationStrategies.get(selectedPosition));
                     }
                 })
@@ -126,6 +188,9 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "New Strategy selected: " + locationStrategy);
         selectedStrategy = locationStrategy;
         tvCurrentStrategy.setText("Location Strategy: " + locationStrategy.toString());
+        if (!requestingPermissions) {
+            restartLocationService();
+        }
     }
 
     private BroadcastReceiver LocationReceiver = new BroadcastReceiver() {
@@ -150,16 +215,21 @@ public class MainActivity extends AppCompatActivity {
 
     private void requestPermissions() {
         // Here, thisActivity is the current activity
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                 && ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+            requestingPermissions = true;
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_PERMISSIONS);
             return;
         }
     }
 
-    private void checkIfLocationEnabled() {
-        // http://stackoverflow.com/questions/10311834/how-to-check-if-location-services-are-enabled
+    private void restartLocationService() {
+        Log.v(TAG, "restartLocationService");
+        stopLocationService();
+        startLocationService();
+    }
+
+    private boolean isLocationEnabled() {
         LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         boolean gps_enabled = false;
         boolean network_enabled = false;
@@ -173,24 +243,26 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ex) {
         }
 
-        if (!gps_enabled && !network_enabled) {
-            final AlertDialog.Builder dialog = new AlertDialog.Builder(this);
-            dialog.setMessage("Location services not available");
-            dialog.setPositiveButton("Open Settings", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface paramDialogInterface, int paramInt) {
-                    Intent myIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                    startActivity(myIntent);
-                }
-            });
-            dialog.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+        return gps_enabled || network_enabled;
+    }
 
-                @Override
-                public void onClick(DialogInterface paramDialogInterface, int paramInt) {
-                }
-            });
-            dialog.show();
-        }
+    private void tryEnableLocation() {
+        final AlertDialog.Builder dialog = new AlertDialog.Builder(this);
+        dialog.setMessage("Location services not available");
+        dialog.setPositiveButton("Open Settings", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface paramDialogInterface, int paramInt) {
+                Intent myIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                startActivity(myIntent);
+            }
+        });
+        dialog.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+
+            @Override
+            public void onClick(DialogInterface paramDialogInterface, int paramInt) {
+            }
+        });
+        dialog.show();
     }
 
     @Override
@@ -231,10 +303,10 @@ public class MainActivity extends AppCompatActivity {
         switch (item.getItemId()) {
             case R.id.startService:
                 updateConfiguration();
-                startService(new Intent(this, LocationService.class));
+                startLocationService();
                 return true;
             case R.id.stopService:
-                stopService(new Intent(this, LocationService.class));
+                stopLocationService();
                 return true;
             case R.id.showHistory:
                 showHistory();
@@ -242,6 +314,14 @@ public class MainActivity extends AppCompatActivity {
             default:
                 return super.onOptionsItemSelected(item);
         }
+    }
+
+    private void startLocationService() {
+        startService(new Intent(this, LocationService.class));
+    }
+
+    private void stopLocationService() {
+        stopService(new Intent(this, LocationService.class));
     }
 
     private void updateConfiguration() {
@@ -325,7 +405,7 @@ public class MainActivity extends AppCompatActivity {
         Intent sendIntent = new Intent();
         sendIntent.setDataAndType(uri, getContentResolver().getType(uri));
         sendIntent.setAction(Intent.ACTION_SEND);
-        sendIntent.putExtra(Intent.EXTRA_EMAIL, new String[] {"yaniv.avraham@startapp.com"});
+        sendIntent.putExtra(Intent.EXTRA_EMAIL, new String[]{"yaniv.avraham@startapp.com"});
         sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
         sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Location History " + Utils.timestampToDate(System.currentTimeMillis()));
         startActivity(sendIntent);
@@ -350,7 +430,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isLocationServiceRunning() {
-        return  getApplicationContext().getSharedPreferences(Constants.SP_FILE_NAME, Context.MODE_PRIVATE).getBoolean(Constants.SP_KEY_SERVICE_RUNNING, false)
+        return getApplicationContext().getSharedPreferences(Constants.SP_FILE_NAME, Context.MODE_PRIVATE).getBoolean(Constants.SP_KEY_SERVICE_RUNNING, false)
                 && Utils.isServiceRunning(getApplicationContext(), LocationService.class);
     }
 }

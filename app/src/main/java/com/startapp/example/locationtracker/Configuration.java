@@ -12,20 +12,21 @@ public class Configuration {
     private static final String SP_STRATEGY = "location_strategy";
     private static final String SP_INTERVAL = "interval";
     private static final String SP_DISTANCE = "distance";
-    private static final String SP_MANUAL_INTERVAL = "manualInterval";
 
-    private LocationStrategy locationStrategy = LocationStrategy.PASSIVE;
-    private int intervalSeconds = 0;
-    private int distanceMeters = 0;
-    private int manualInterval = 30; // seconds
+    private static final LocationStrategy DEFAULT_STRATEGY = LocationStrategy.FUSED_PRIORITY_NO_POWER;
+    private static final int DEFAULT_INTERVAL_SECONDS = 300;
+    private static final int DEFAULT_DISTANCE_METERS= 0;
+
+    private LocationStrategy locationStrategy = DEFAULT_STRATEGY; // default strategy
+    private int intervalSeconds = DEFAULT_INTERVAL_SECONDS; // 5 minutes
+    private int distanceMeters = DEFAULT_DISTANCE_METERS;
 
     public static Configuration load(Context context) {
         Configuration configuration = new Configuration();
         SharedPreferences sharedPref = context.getSharedPreferences("sp", Context.MODE_PRIVATE);
-        configuration.setLocationStrategy(LocationStrategy.valueOf(sharedPref.getString(SP_STRATEGY, LocationStrategy.FUSED_PRIORITY_LOW_POWER.toString())));
-        configuration.setIntervalSeconds(sharedPref.getInt(SP_INTERVAL, 0));
-        configuration.setDistanceMeters(sharedPref.getInt(SP_DISTANCE, 0));
-        configuration.setManualInterval(sharedPref.getInt(SP_MANUAL_INTERVAL, 30));
+        configuration.setLocationStrategy(LocationStrategy.valueOf(sharedPref.getString(SP_STRATEGY, DEFAULT_STRATEGY.toString())));
+        configuration.setIntervalSeconds(sharedPref.getInt(SP_INTERVAL, DEFAULT_INTERVAL_SECONDS));
+        configuration.setDistanceMeters(sharedPref.getInt(SP_DISTANCE, DEFAULT_DISTANCE_METERS));
         return configuration;
     }
 
@@ -34,7 +35,6 @@ public class Configuration {
         sharedPref.edit().putString(SP_STRATEGY, locationStrategy.toString())
                 .putInt(SP_INTERVAL, intervalSeconds)
                 .putInt(SP_DISTANCE, distanceMeters)
-                .putInt(SP_MANUAL_INTERVAL, manualInterval)
                 .apply();
     }
 
@@ -60,13 +60,5 @@ public class Configuration {
 
     public void setDistanceMeters(int distance) {
         this.distanceMeters = distance;
-    }
-
-    public int getManualInterval() {
-        return manualInterval;
-    }
-
-    public void setManualInterval(int manualInterval) {
-        this.manualInterval = manualInterval;
     }
 }
